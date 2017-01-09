@@ -1,15 +1,9 @@
-
-node default 
-class {'php':
-include php
-}
+node /\w*.mylabserver.com/
 {
-     class {'newrelic::server::linux':
-       newrelic_license_key => 'e99bee730c1c86ec55b4c3708f2a757ba0d7ac5f',
-     }
+     include php
+     include newrelic::server::linux
 
-     class {'newrelic::agent::php':
-       newrelic_license_key  => 'e99bee730c1c86ec55b4c3708f2a757ba0d7ac5f',
-       newrelic_ini_appname  => 'Truckwalas',
-     }
+}
+node default {
+	include nginx
 }
