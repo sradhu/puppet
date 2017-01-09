@@ -28,8 +28,6 @@
 #     of 90 seconds
 #   [*resolver*]            - Array: Configures name servers used to resolve
 #     names of upstream servers into addresses.
-#   [*server_name*]         - List of streamhost names for which this streamhost will
-#     respond. Default [$name].
 #   [*raw_prepend*]            - A single string, or an array of strings to
 #     prepend to the server directive (after cfg prepend directives). NOTE:
 #     YOU are responsible for a semicolon on each line that requires one.
@@ -61,7 +59,6 @@ define nginx::resource::streamhost (
   $proxy_read_timeout           = $::nginx::config::proxy_read_timeout,
   $proxy_connect_timeout        = $::nginx::config::proxy_connect_timeout,
   $resolver                     = [],
-  $server_name                  = [$name],
   $raw_prepend                  = undef,
   $raw_append                   = undef,
   $owner                        = $::nginx::config::global_owner,
@@ -98,7 +95,6 @@ define nginx::resource::streamhost (
   validate_string($proxy_read_timeout)
 
   validate_array($resolver)
-  validate_array($server_name)
 
   validate_string($owner)
   validate_string($group)
@@ -106,11 +102,15 @@ define nginx::resource::streamhost (
     "${mode} is not valid. It should be 4 digits (0644 by default).")
 
   # Variables
-  $streamhost_dir = "${::nginx::config::conf_dir}/streams-available"
-  $streamhost_enable_dir = "${::nginx::config::conf_dir}/streams-enabled"
-  $streamhost_symlink_ensure = $ensure ? {
-    'absent' => absent,
-    default  => 'link',
+  if $::nginx::config::confd_only {
+    $streamhost_dir = "${::nginx::config::conf_dir}/conf.stream.d"
+  } else {
+    $streamhost_dir = "${::nginx::config::conf_dir}/streams-available"
+    $streamhost_enable_dir = "${::nginx::config::conf_dir}/streams-enabled"
+    $streamhost_symlink_ensure = $ensure ? {
+      'absent' => absent,
+      default  => 'link',
+    }
   }
 
   $name_sanitized = regsubst($name, ' ', '_', 'G')
@@ -134,10 +134,11 @@ define nginx::resource::streamhost (
   }
 
   concat { $config_file:
-    owner  => $owner,
-    group  => $group,
-    mode   => $mode,
-    notify => Class['::nginx::service'],
+    owner   => $owner,
+    group   => $group,
+    mode    => $mode,
+    notify  => Class['::nginx::service'],
+    require => File[$streamhost_dir],
   }
 
   concat::fragment { "${name_sanitized}-header":
@@ -146,12 +147,13 @@ define nginx::resource::streamhost (
     order   => '001',
   }
 
-  file{ "${name_sanitized}.conf symlink":
-    ensure  => $streamhost_symlink_ensure,
-    path    => "${streamhost_enable_dir}/${name_sanitized}.conf",
-    target  => $config_file,
-    require => Concat[$config_file],
-    notify  => Class['::nginx::service'],
+  unless $::nginx::config::confd_only {
+    file{ "${name_sanitized}.conf symlink":
+      ensure  => $streamhost_symlink_ensure,
+      path    => "${streamhost_enable_dir}/${name_sanitized}.conf",
+      target  => $config_file,
+      require => [Concat[$config_file], File[$streamhost_enable_dir]],
+      notify  => Class['::nginx::service'],
+    }
   }
-
 }
